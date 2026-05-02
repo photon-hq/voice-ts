@@ -1,0 +1,106 @@
+/**
+ * Error class hierarchy for the voice-ts SDK.
+ *
+ * Inspired by Stripe's error design: a single base class with typed subclasses
+ * so callers can use `instanceof` to handle specific failure modes rather than
+ * inspecting boolean flags or string codes.
+ *
+ * A factory function in `error-handler.ts` maps gRPC errors to the correct
+ * subclass automatically.
+ */
+
+import type { ErrorCode } from "../types/errors.ts";
+
+export interface VoiceErrorOptions {
+  /** The original error that caused this one. */
+  readonly cause?: Error;
+  /** Canonical error code from the server. */
+  readonly code: ErrorCode;
+  /** Arbitrary key-value pairs providing additional context. */
+  readonly context?: Record<string, string>;
+  /** Numeric gRPC status code (mirrors `nice-grpc-common` Status enum). */
+  readonly grpcCode: number;
+  /** Whether the caller should retry the request. */
+  readonly retryable: boolean;
+}
+
+/**
+ * Base error for every failure surfaced by the SDK.
+ *
+ * All properties are `readonly` -- errors are informational, not mutable.
+ */
+export class VoiceError extends Error {
+  readonly code: ErrorCode;
+  readonly retryable: boolean;
+  readonly grpcCode: number;
+  readonly context: Record<string, string>;
+
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, { cause: options.cause });
+    this.name = "VoiceError";
+    this.code = options.code;
+    this.retryable = options.retryable;
+    this.grpcCode = options.grpcCode;
+    this.context = options.context ?? {};
+  }
+}
+
+/**
+ * The request could not be authenticated or the caller lacks permission.
+ *
+ * Maps from gRPC `UNAUTHENTICATED` and `PERMISSION_DENIED`.
+ */
+export class AuthenticationError extends VoiceError {
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, options);
+    this.name = "AuthenticationError";
+  }
+}
+
+/**
+ * The requested resource was not found.
+ *
+ * Maps from gRPC `NOT_FOUND`.
+ */
+export class NotFoundError extends VoiceError {
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, options);
+    this.name = "NotFoundError";
+  }
+}
+
+/**
+ * A rate limit or quota was exceeded.
+ *
+ * Maps from gRPC `RESOURCE_EXHAUSTED`.
+ */
+export class RateLimitError extends VoiceError {
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, options);
+    this.name = "RateLimitError";
+  }
+}
+
+/**
+ * The request contained invalid arguments or a failed precondition.
+ *
+ * Maps from gRPC `INVALID_ARGUMENT` and `FAILED_PRECONDITION`.
+ */
+export class ValidationError extends VoiceError {
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, options);
+    this.name = "ValidationError";
+  }
+}
+
+/**
+ * The server is unreachable or the request timed out.
+ *
+ * Maps from gRPC `UNAVAILABLE` and `DEADLINE_EXCEEDED`.
+ */
+export class ConnectionError extends VoiceError {
+  constructor(message: string, options: VoiceErrorOptions) {
+    super(message, options);
+    this.name = "ConnectionError";
+  }
+}

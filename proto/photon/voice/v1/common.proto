@@ -1,0 +1,17 @@
+syntax = "proto3";
+package photon.voice.v1;
+
+// Keepalive signal for streaming RPCs. Clients should silently discard.
+message Heartbeat {}
+
+// Opaque cursor for resumable event streams. Clients must treat the value
+// as opaque and pass it back verbatim.
+message StreamCursor {
+  string value = 1;
+}
+
+enum CallDirection {
+  CALL_DIRECTION_UNSPECIFIED = 0;
+  CALL_DIRECTION_INCOMING = 1;
+  CALL_DIRECTION_OUTGOING = 2;
+}

@@ -1,0 +1,110 @@
+syntax = "proto3";
+package photon.voice.v1;
+
+// MediaService is the audio plane. The proxy bridges these streams onto
+// Telnyx Media Streaming WebSockets so an SDK can push pre-encoded audio
+// frames (its own TTS, recorded clips, anything) directly to a live caller
+// and read inbound caller audio + DTMF in the same stream.
+//
+// One bridge per call_control_id at a time. Codec is chosen per stream;
+// frames are raw audio bytes (no WAV headers, no base64).
+service MediaService {
+  // Unary one-shot: SDK supplies a complete pre-encoded clip; the proxy
+  // attaches a media bridge, plays the clip, and tears down. Returns when
+  // the clip has been queued (not when audio has finished playing).
+  rpc PlayClip(PlayClipRequest) returns (PlayClipResponse);
+
+  // Bidi full-duplex: SDK pushes outbound frames and receives inbound
+  // caller audio + DTMF + lifecycle markers in the same stream. The first
+  // client message MUST be `start`. A second concurrent stream against the
+  // same call_control_id is rejected with FAILED_PRECONDITION.
+  rpc MediaStream(stream MediaClientMessage) returns (stream MediaServerMessage);
+}
+
+enum AudioCodec {
+  AUDIO_CODEC_UNSPECIFIED = 0;
+  // G.711 µ-law, 8 kHz, mono. 20 ms frames = 160 raw bytes. Default.
+  AUDIO_CODEC_PCMU_8000   = 1;
+  // 16-bit linear PCM, 8 kHz, mono. 20 ms frames = 320 raw bytes.
+  AUDIO_CODEC_L16_8000    = 2;
+  // 16-bit linear PCM, 16 kHz, mono. 20 ms frames = 640 raw bytes.
+  AUDIO_CODEC_L16_16000   = 3;
+}
+
+message PlayClipRequest {
+  string call_control_id = 1;
+  AudioCodec codec = 2;
+  // Raw audio bytes for the chosen codec — NO container/header.
+  bytes audio = 3;
+  // If true, cancel any active stream/clip on this call before playing.
+  bool interrupt = 4;
+}
+message PlayClipResponse {
+  string clip_id = 1;
+}
+
+message MediaClientMessage {
+  oneof msg {
+    StartStream   start     = 1; // MUST be first
+    OutboundFrame frame     = 2;
+    Mark          mark      = 3; // server echoes back when frame plays
+    Interrupt     interrupt = 4; // flush queued outbound (barge-in)
+    StopStream   stop       = 5;
+  }
+}
+
+message StartStream {
+  string call_control_id = 1;
+  AudioCodec codec = 2;
+  // Surface inbound caller audio on this stream.
+  bool send_inbound = 3;
+  // Surface DTMF events on this stream (also remain on SubscribeEvents).
+  bool send_dtmf = 4;
+}
+message OutboundFrame {
+  // Raw audio bytes for the chosen codec (one or more 20 ms frames).
+  bytes audio = 1;
+  // Optional client-supplied seq for client-side ordering checks.
+  uint64 seq = 2;
+}
+message Mark {
+  string name = 1;
+}
+message Interrupt {}
+message StopStream {}
+
+message MediaServerMessage {
+  oneof msg {
+    StreamReady  ready    = 1;
+    InboundFrame frame    = 2;
+    DtmfDigit    dtmf     = 3;
+    MarkReached  mark     = 4;
+    StreamError  error    = 5;
+    StreamClosed closed   = 6;
+  }
+}
+
+message StreamReady {
+  AudioCodec codec = 1;
+}
+message InboundFrame {
+  bytes audio = 1;
+  uint64 seq = 2;
+  uint64 ts_ms = 3;
+}
+message DtmfDigit {
+  string digit = 1;
+  uint64 ts_ms = 2;
+}
+message MarkReached {
+  string name = 1;
+}
+message StreamError {
+  // Stable code: OVERFLOW, SLOW, INTERNAL, INVALID_FRAME, …
+  string code = 1;
+  string message = 2;
+}
+message StreamClosed {
+  // Stable reason: client_stop, call_hangup, telnyx_close, cancelled, …
+  string reason = 1;
+}

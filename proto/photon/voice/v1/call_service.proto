@@ -1,0 +1,213 @@
+syntax = "proto3";
+package photon.voice.v1;
+
+import "google/protobuf/timestamp.proto";
+import "photon/voice/v1/common.proto";
+
+service CallService {
+  // Outbound commands. The SDK supplies `to` (end_user_number) and may
+  // supply `from` (a dedicated line) on Dial; the proxy otherwise resolves
+  // `from` from the project's routing table. Action RPCs (Answer, Hangup,
+  // …) take the call_control_id of an in-flight call.
+  rpc Dial(DialRequest) returns (DialResponse);
+  rpc Answer(AnswerRequest) returns (AnswerResponse);
+  rpc Hangup(HangupRequest) returns (HangupResponse);
+  rpc Reject(RejectRequest) returns (RejectResponse);
+  rpc Bridge(BridgeRequest) returns (BridgeResponse);
+  rpc Transfer(TransferRequest) returns (TransferResponse);
+  rpc SendDTMF(SendDTMFRequest) returns (SendDTMFResponse);
+
+  // Live event subscription. Server-streams every call event for the
+  // authenticated project. Does NOT replay — use FetchMissedEvents.
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream SubscribeEventsResponse);
+
+  // Catch up after disconnect. Pass the cursor from the last received event.
+  rpc FetchMissedEvents(FetchMissedEventsRequest) returns (FetchMissedEventsResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Outbound command requests/responses
+// ---------------------------------------------------------------------------
+
+message DialRequest {
+  // E.164 destination number.
+  string to = 1;
+  // Optional. Application state echoed back on call events.
+  optional string client_state = 2;
+  // Optional. Override timeout (seconds) before treating call as no-answer.
+  optional int32 timeout_secs = 3;
+  // Optional. Enable answering-machine detection.
+  optional bool answering_machine_detection = 4;
+  // Optional. Dedicated line (E.164) to use as the caller ID. If supplied
+  // and `to` isn't yet a user of the project, the proxy auto-creates a
+  // dedicated user with assignedPhoneNumber=from. Must be one of the
+  // project's dedicated lines.
+  optional string from = 5;
+}
+
+message DialResponse {
+  string call_control_id = 1;
+  string call_leg_id = 2;
+  string call_session_id = 3;
+}
+
+message AnswerRequest {
+  string call_control_id = 1;
+  optional string client_state = 2;
+}
+message AnswerResponse {}
+
+message HangupRequest {
+  string call_control_id = 1;
+}
+message HangupResponse {}
+
+enum RejectCause {
+  REJECT_CAUSE_UNSPECIFIED = 0;
+  REJECT_CAUSE_REJECTED = 1;
+  REJECT_CAUSE_USER_BUSY = 2;
+  REJECT_CAUSE_CALL_REJECTED = 3;
+}
+
+message RejectRequest {
+  string call_control_id = 1;
+  RejectCause cause = 2;
+}
+message RejectResponse {}
+
+message BridgeRequest {
+  string call_control_id = 1;
+  string other_call_control_id = 2;
+}
+message BridgeResponse {}
+
+message TransferRequest {
+  string call_control_id = 1;
+  // E.164 destination.
+  string to = 2;
+  optional string client_state = 3;
+}
+message TransferResponse {}
+
+message SendDTMFRequest {
+  string call_control_id = 1;
+  // Digits to send (0-9, *, #, A-D).
+  string digits = 2;
+  // Optional. Per-digit duration.
+  optional int32 duration_millis = 3;
+}
+message SendDTMFResponse {}
+
+// ---------------------------------------------------------------------------
+// Streaming subscription
+// ---------------------------------------------------------------------------
+
+message SubscribeEventsRequest {}
+
+message SubscribeEventsResponse {
+  StreamCursor cursor = 1;
+
+  oneof payload {
+    CallInitiatedEvent      call_initiated       = 10;
+    CallAnsweredEvent       call_answered        = 11;
+    CallHangupEvent         call_hangup          = 12;
+    CallBridgedEvent        call_bridged         = 13;
+    CallDTMFReceivedEvent   call_dtmf_received   = 14;
+    CallMachineEvent        call_machine         = 19;
+    Heartbeat               heartbeat            = 99;
+  }
+}
+
+message FetchMissedEventsRequest {
+  StreamCursor cursor = 1;
+  optional int32 limit = 2;
+}
+
+message FetchMissedEventsResponse {
+  repeated Event events = 1;
+}
+
+message Event {
+  StreamCursor cursor = 1;
+
+  oneof payload {
+    CallInitiatedEvent      call_initiated       = 10;
+    CallAnsweredEvent       call_answered        = 11;
+    CallHangupEvent         call_hangup          = 12;
+    CallBridgedEvent        call_bridged         = 13;
+    CallDTMFReceivedEvent   call_dtmf_received   = 14;
+    CallMachineEvent        call_machine         = 19;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Event payloads
+// ---------------------------------------------------------------------------
+
+// First event of any call. For incoming, project_did is recovered from the
+// SIP Diversion header; end_user_number = from. For outgoing, project_did =
+// from; end_user_number = to.
+message CallInitiatedEvent {
+  string call_control_id = 1;
+  string call_leg_id = 2;
+  string call_session_id = 3;
+  CallDirection direction = 4;
+  // Caller's number (E.164). For incoming calls this is the end user; for
+  // outgoing calls this is the project DID. Never the internal ingress DID.
+  string from = 5;
+  // Callee's number (E.164). For incoming calls this is the project DID
+  // (recovered from SIP Diversion); for outgoing calls this is the end user.
+  // Never the internal ingress DID.
+  string to = 6;
+  // The project's public-facing DID for this call.
+  string project_did = 7;
+  // The end customer's number (caller for incoming, callee for outgoing).
+  string end_user_number = 8;
+  optional string caller_id_name = 9;
+  google.protobuf.Timestamp start_time = 10;
+  optional string client_state = 11;
+  optional string shaken_stir_attestation = 12;
+}
+
+message CallAnsweredEvent {
+  string call_control_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  optional string client_state = 3;
+}
+
+message CallHangupEvent {
+  string call_control_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  optional string hangup_cause = 3;
+  optional string hangup_source = 4;
+  optional string sip_hangup_cause = 5;
+  optional string client_state = 6;
+}
+
+message CallBridgedEvent {
+  string call_control_id = 1;
+  string peer_call_control_id = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  optional string client_state = 4;
+}
+
+message CallDTMFReceivedEvent {
+  string call_control_id = 1;
+  string digit = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  optional string client_state = 4;
+}
+
+enum MachineDetectionResult {
+  MACHINE_DETECTION_RESULT_UNSPECIFIED = 0;
+  MACHINE_DETECTION_RESULT_HUMAN = 1;
+  MACHINE_DETECTION_RESULT_MACHINE = 2;
+  MACHINE_DETECTION_RESULT_SILENCE = 3;
+}
+
+message CallMachineEvent {
+  string call_control_id = 1;
+  MachineDetectionResult result = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  optional string client_state = 4;
+}
