@@ -37,17 +37,7 @@ await voice.close();
 (`() => Promise<string>`) to refresh it on each call. The SDK sends it as the
 `access_token` gRPC metadata key — **not** `authorization: Bearer …`.
 
-## Endpoints
-
-The default address is `spectrum-voice-grpc.photon.codes:443` (TLS).
-
-```ts
-// Staging
-createClient({ address: "staging-spectrum-voice-grpc.photon.codes:443", token });
-
-// Local dev (run spectrum-voice with `bun run dev`)
-createClient({ address: "localhost:50051", tls: false, token });
-```
+### Keepalive
 
 For long-lived `subscribe()` and `media.openStream()` calls passing through
 NATs / load balancers, set keepalive:
