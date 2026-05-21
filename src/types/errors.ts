@@ -21,6 +21,7 @@ export const ErrorCode = {
   rateLimited: "rateLimited",
 
   // Not found
+  notFound: "notFound",
   callNotFound: "callNotFound",
   lineNotFound: "lineNotFound",
 

@@ -190,7 +190,7 @@ Mapping from gRPC status to SDK class:
 | `UNAVAILABLE`, `DEADLINE_EXCEEDED` | `ConnectionError` |
 | Everything else | `VoiceError` |
 
-Server-supplied trailing metadata (`error-code`, `x-retryable`) is captured and surfaced as `err.code` and `err.retryable`.
+Server-supplied trailing metadata (`error-code`, `x-retryable`) is captured and surfaced as `err.code` and `err.retryable`. If a server omits `error-code`, the SDK falls back to the gRPC status (`NOT_FOUND` -> `notFound`, `FAILED_PRECONDITION` -> `preconditionFailed`, `UNAVAILABLE` -> `serviceUnavailable`, etc.) so callers do not see a misleading `internalError` for normal typed failures.
 
 ---
 
