@@ -64,7 +64,7 @@ export function fromGrpcError(error: unknown): VoiceError {
 
   const errorCode =
     (readMetadataValue(error, "error-code") as ErrorCode | undefined) ??
-    ("internalError" as ErrorCode);
+    defaultErrorCodeForGrpcStatus(grpcCode);
 
   const retryable = readMetadataValue(error, "x-retryable") === "true";
 
@@ -98,5 +98,28 @@ export function fromGrpcError(error: unknown): VoiceError {
 
     default:
       return new VoiceError(details, options);
+  }
+}
+
+function defaultErrorCodeForGrpcStatus(grpcCode: number): ErrorCode {
+  switch (grpcCode) {
+    case Status.UNAUTHENTICATED:
+      return "unauthenticated";
+    case Status.PERMISSION_DENIED:
+      return "unauthorized";
+    case Status.NOT_FOUND:
+      return "notFound";
+    case Status.RESOURCE_EXHAUSTED:
+      return "rateLimited";
+    case Status.INVALID_ARGUMENT:
+      return "invalidArgument";
+    case Status.FAILED_PRECONDITION:
+      return "preconditionFailed";
+    case Status.UNAVAILABLE:
+      return "serviceUnavailable";
+    case Status.DEADLINE_EXCEEDED:
+      return "timeout";
+    default:
+      return "internalError";
   }
 }
